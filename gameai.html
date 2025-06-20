@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Space Vanguard</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background-color: #1a1a2e;
+        color: #e0e0e0;
+        font-family: "Arial", sans-serif;
+        margin: 0;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+
+      h1 {
+        color: #00bcd4;
+        margin-bottom: 20px;
+      }
+
+      #gameCanvas {
+        background-color: #0d0d1a;
+        border: 2px solid #00bcd4;
+        display: block;
+        margin-bottom: 20px;
+      }
+
+      #gameInfo {
+        display: flex;
+        justify-content: space-between;
+        width: 800px; /* Match canvas width */
+        margin-bottom: 10px;
+        font-size: 1.2em;
+      }
+
+      #gameOverScreen {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        color: white;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        font-size: 2em;
+        text-align: center;
+        z-index: 100;
+        display: none; /* Hidden by default */
+      }
+
+      #gameOverScreen h2 {
+        color: #ff4d4d;
+        margin-bottom: 20px;
+      }
+
+      #gameOverScreen button {
+        padding: 15px 30px;
+        font-size: 1em;
+        background-color: #00bcd4;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
+
+      #gameOverScreen button:hover {
+        background-color: #0097a7;
+      }
+
+      .controls-section {
+        background-color: #1f1f3a;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        margin-top: 20px;
+        width: 800px;
+        max-width: 90%;
+        text-align: center;
+      }
+
+      .controls-section h2 {
+        color: #00bcd4;
+        margin-bottom: 15px;
+      }
+
+      .controls-section button {
+        background-color: #4caf50;
+        color: white;
+        padding: 10px 15px;
+        margin: 5px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 1em;
+        transition: background-color 0.3s ease;
+      }
+
+      .controls-section button:hover {
+        background-color: #45a049;
+      }
+
+      #imageGenOutput {
+        margin-top: 15px;
+        padding: 10px;
+        background-color: #2a2a4a;
+        border-radius: 5px;
+        min-height: 50px;
+        text-align: left;
+        word-wrap: break-word;
+        white-space: pre-wrap; /* Preserve formatting for prompts */
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Space Vanguard</h1>
+    <div id="gameInfo">
+      <div id="scoreDisplay">Score: 0</div>
+      <div id="healthDisplay">Health: 100</div>
+      <div id="waveDisplay">Wave: 1</div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <div id="gameOverScreen">
+      <h2>GAME OVER!</h2>
+      <p>You survived <span id="finalScore">0</span> points!</p>
+      <button onclick="restartGame()">Play Again</button>
+    </div>
+
+    <div class="controls-section">
+      <h2>Image Generation Control</h2>
+      <p>
+        Click a button below. Then, tell me (the AI) in our chat conversation
+        what kind of image you want. For example: "Generate a futuristic blue
+        spaceship, top-down view, pixel art style." Or: "Generate a dark space
+        background with nebulae and distant stars, seamless." I will provide a
+        URL to the generated image, which you can then use to replace the
+        default shapes in the JavaScript code!
+      </p>
+      <button onclick="displayImagePrompt('player')">
+        Generate Player Ship Image
+      </button>
+      <button onclick="displayImagePrompt('enemy')">
+        Generate Enemy Ship Image
+      </button>
+      <button onclick="displayImagePrompt('background')">
+        Generate Background Image
+      </button>
+      <div id="imageGenOutput"></div>
+    </div>
+
+    <script>
+      // --- Game Setup ---
+      const enemyImage = new Image();
+      enemyImage.src = "enemy.png"; // Use the URL I provided
+      enemyImage.onload = () => {
+        console.log("enemy image loaded!");
+      };
+      const playerImage = new Image();
+      playerImage.src = "gemini.png"; // Use the URL I provided
+      playerImage.onload = () => {
+        console.log("Player image loaded!");
+      };
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const scoreDisplay = document.getElementById("scoreDisplay");
+      const healthDisplay = document.getElementById("healthDisplay");
+      const waveDisplay = document.getElementById("waveDisplay");
+      const gameOverScreen = document.getElementById("gameOverScreen");
+      const finalScoreDisplay = document.getElementById("finalScore");
+      const imageGenOutput = document.getElementById("imageGenOutput");
+
+      let gameRunning = false;
+      let score = 0;
+      let wave = 1;
+
+      // --- Player ---
+      const player = {
+        x: canvas.width / 2,
+        y: canvas.height - 50,
+        width: 40,
+        height: 40,
+        speed: 5,
+        dx: 0,
+        dy: 0,
+        health: 100,
+        color: "#00bcd4", // Player color
+        draw() {
+          // Check if the image is loaded, otherwise draw a placeholder
+          if (playerImage.complete && playerImage.naturalWidth !== 0) {
+            ctx.drawImage(
+              playerImage,
+              this.x - this.width / 2,
+              this.y - this.height / 2,
+              this.width,
+              this.height
+            );
+          } else {
+            // Fallback to simple shape if image not loaded
+            ctx.fillStyle = this.color;
+            ctx.fillRect(
+              this.x - this.width / 2,
+              this.y - this.height / 2,
+              this.width,
+              this.height
+            );
+            ctx.fillStyle = "#00a7b9";
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y - this.height / 2 - 10);
+            ctx.lineTo(this.x + this.width / 2, this.y - this.height / 2);
+            ctx.lineTo(this.x - this.width / 2, this.y - this.height / 2);
+            ctx.closePath();
+            ctx.fill();
+          }
+        },
+        update() {
+          this.x += this.dx;
+          this.y += this.dy;
+
+          // Boundary checks
+          if (this.x - this.width / 2 < 0) this.x = this.width / 2;
+          if (this.x + this.width / 2 > canvas.width)
+            this.x = canvas.width - this.width / 2;
+          if (this.y - this.height / 2 < 0) this.y = this.height / 2;
+          if (this.y + this.height / 2 > canvas.height)
+            this.y = canvas.height - this.height / 2;
+        },
+      };
+
+      // --- Bullets ---
+      const playerBullets = [];
+      const enemyBullets = [];
+
+      class Bullet {
+        constructor(x, y, dx, dy, speed, color, isPlayerBullet = true) {
+          this.x = x;
+          this.y = y;
+          this.dx = dx * speed;
+          this.dy = dy * speed;
+          this.radius = 5;
+          this.color = color;
+          this.isPlayerBullet = isPlayerBullet;
+        }
+
+        draw() {
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        update() {
+          this.x += this.dx;
+          this.y += this.dy;
+        }
+      }
+
+      // --- Enemies ---
+      const enemies = [];
+      let enemySpawnInterval;
+      let lastEnemySpawnTime = 0;
+      const baseSpawnRate = 1500; // milliseconds
+      const maxEnemiesPerWave = 10;
+
+      class Enemy {
+        constructor(x, y) {
+          this.x = x;
+          this.y = y;
+          this.width = 30;
+          this.height = 30;
+          this.speed = 1 + wave * 0.1; // Enemies get faster each wave
+          this.health = 2 + wave * 0.5; // Enemies get more health
+          this.color = "#ff4d4d"; // Enemy color
+          this.lastShotTime = 0;
+          this.shotInterval = 1000 + Math.random() * 1000; // Randomize shot interval
+        }
+
+        draw() {
+          // Check if the image is loaded, otherwise draw a placeholder
+          if (enemyImage.complete && enemyImage.naturalWidth !== 0) {
+            ctx.drawImage(
+              enemyImage,
+              this.x - this.width / 2,
+              this.y - this.height / 2,
+              this.width,
+              this.height
+            );
+          } else {
+            // Fallback to simple shape if image not loaded
+            ctx.fillStyle = this.color;
+            ctx.fillRect(
+              this.x - this.width / 2,
+              this.y - this.height / 2,
+              this.width,
+              this.height
+            );
+            ctx.fillStyle = "#00a7b9";
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y - this.height / 2 - 10);
+            ctx.lineTo(this.x + this.width / 2, this.y - this.height / 2);
+            ctx.lineTo(this.x - this.width / 2, this.y - this.height / 2);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+
+        update() {
+          // Basic AI: Move towards player
+          const angle = Math.atan2(player.y - this.y, player.x - this.x);
+          this.x += Math.cos(angle) * this.speed;
+          this.y += Math.sin(angle) * this.speed;
+
+          // Enemy shooting
+          const currentTime = Date.now();
+          if (currentTime - this.lastShotTime > this.shotInterval) {
+            this.shoot();
+            this.lastShotTime = currentTime;
+          }
+        }
+
+        shoot() {
+          const angle = Math.atan2(player.y - this.y, player.x - this.x);
+          const bulletDx = Math.cos(angle);
+          const bulletDy = Math.sin(angle);
+          enemyBullets.push(
+            new Bullet(this.x, this.y, bulletDx, bulletDy, 7, "#ffcc00", false)
+          );
+        }
+      }
+
+      function spawnEnemy() {
+        if (enemies.length < maxEnemiesPerWave * wave) {
+          const x = Math.random() * (canvas.width - 60) + 30; // Random x within bounds
+          const y = -30; // Spawn off-screen top
+          enemies.push(new Enemy(x, y));
+        }
+      }
+
+      // --- Input Handling ---
+      const keys = {};
+
+      document.addEventListener("keydown", (e) => {
+        keys[e.key] = true;
+      });
+
+      document.addEventListener("keyup", (e) => {
+        keys[e.key] = false;
+      });
+
+      canvas.addEventListener("mousedown", (e) => {
+        if (e.button === 0) {
+          // Left mouse button
+          shootPlayerBullet(e);
+        }
+      });
+
+      function handlePlayerMovement() {
+        player.dx = 0;
+        player.dy = 0;
+
+        if (keys["w"] || keys["ArrowUp"]) player.dy = -player.speed;
+        if (keys["s"] || keys["ArrowDown"]) player.dy = player.speed;
+        if (keys["a"] || keys["ArrowLeft"]) player.dx = -player.speed;
+        if (keys["d"] || keys["ArrowRight"]) player.dx = player.speed;
+      }
+
+      function shootPlayerBullet(event) {
+        // Get mouse position relative to canvas
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+
+        // Calculate direction vector from player to mouse
+        const angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+        const bulletDx = Math.cos(angle);
+        const bulletDy = Math.sin(angle);
+
+        playerBullets.push(
+          new Bullet(
+            player.x,
+            player.y,
+            bulletDx,
+            bulletDy,
+            10,
+            "#00eaff",
+            true
+          )
+        );
+      }
+
+      // --- Collision Detection ---
+      function checkCollision(obj1, obj2) {
+        // Assuming objects have x, y, width, height (or radius for circles)
+        // Simple AABB collision for rectangles
+        if (obj1.radius && obj2.radius) {
+          // Circle-Circle collision (for bullets)
+          const dx = obj1.x - obj2.x;
+          const dy = obj1.y - obj2.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          return distance < obj1.radius + obj2.radius;
+        } else if (obj1.radius && !obj2.radius) {
+          // Circle-Rect collision (bullet-ship)
+          const closestX = Math.max(
+            obj2.x - obj2.width / 2,
+            Math.min(obj1.x, obj2.x + obj2.width / 2)
+          );
+          const closestY = Math.max(
+            obj2.y - obj2.height / 2,
+            Math.min(obj1.y, obj2.y + obj2.height / 2)
+          );
+          const dx = obj1.x - closestX;
+          const dy = obj1.y - closestY;
+          return dx * dx + dy * dy < obj1.radius * obj1.radius;
+        } else if (!obj1.radius && obj2.radius) {
+          // Rect-Circle collision (ship-bullet)
+          return checkCollision(obj2, obj1); // Re-use the above logic
+        } else {
+          // Rect-Rect collision (not used directly in this game yet, but good to have)
+          return (
+            obj1.x - obj1.width / 2 < obj2.x + obj2.width / 2 &&
+            obj1.x + obj1.width / 2 > obj2.x - obj2.width / 2 &&
+            obj1.y - obj1.height / 2 < obj2.y + obj2.height / 2 &&
+            obj1.y + obj1.height / 2 > obj2.y - obj2.height / 2
+          );
+        }
+      }
+
+      // --- Game Loop ---
+      function gameLoop() {
+        if (!gameRunning) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+        // Update and draw player
+        handlePlayerMovement();
+        player.update();
+        player.draw();
+
+        // Update and draw player bullets
+        for (let i = playerBullets.length - 1; i >= 0; i--) {
+          const bullet = playerBullets[i];
+          bullet.update();
+          bullet.draw();
+
+          // Remove bullets off-screen
+          if (
+            bullet.x < 0 ||
+            bullet.x > canvas.width ||
+            bullet.y < 0 ||
+            bullet.y > canvas.height
+          ) {
+            playerBullets.splice(i, 1);
+            continue;
+          }
+
+          // Check collision with enemies
+          for (let j = enemies.length - 1; j >= 0; j--) {
+            const enemy = enemies[j];
+            if (checkCollision(bullet, enemy)) {
+              enemy.health -= 1; // Bullet damage
+              playerBullets.splice(i, 1); // Remove bullet
+              if (enemy.health <= 0) {
+                enemies.splice(j, 1); // Remove enemy
+                score += 10 * wave; // Score increases with wave
+              }
+              break; // Bullet hit something, no need to check other enemies
+            }
+          }
+        }
+
+        // Update and draw enemies
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          const enemy = enemies[i];
+          enemy.update();
+          enemy.draw();
+
+          // Remove enemies if they go off screen (or pass player)
+          if (enemy.y > canvas.height + enemy.height) {
+            enemies.splice(i, 1);
+            // Optionally, penalize player for enemies that escape
+          }
+        }
+
+        // Update and draw enemy bullets
+        for (let i = enemyBullets.length - 1; i >= 0; i--) {
+          const bullet = enemyBullets[i];
+          bullet.update();
+          bullet.draw();
+
+          // Remove bullets off-screen
+          if (
+            bullet.x < 0 ||
+            bullet.x > canvas.width ||
+            bullet.y < 0 ||
+            bullet.y > canvas.height
+          ) {
+            enemyBullets.splice(i, 1);
+            continue;
+          }
+
+          // Check collision with player
+          if (checkCollision(bullet, player)) {
+            player.health -= 5; // Enemy bullet damage
+            enemyBullets.splice(i, 1); // Remove bullet
+            if (player.health <= 0) {
+              endGame();
+            }
+            break; // Bullet hit player, no need to check other bullets
+          }
+        }
+
+        // Update UI
+        scoreDisplay.textContent = `Score: ${score}`;
+        healthDisplay.textContent = `Health: ${Math.max(0, player.health)}`; // Don't show negative health
+        waveDisplay.textContent = `Wave: ${wave}`;
+
+        // Spawn logic
+        const currentTime = Date.now();
+        if (
+          enemies.length === 0 &&
+          (currentTime - lastEnemySpawnTime > 3000 || wave === 1)
+        ) {
+          // Wait 3 sec after clearing wave or at start
+          if (wave > 1) {
+            // Only increment wave after first wave is cleared
+            wave++;
+          }
+          lastEnemySpawnTime = currentTime;
+          // Spawn new wave
+          for (let i = 0; i < maxEnemiesPerWave + wave * 2; i++) {
+            // More enemies per wave
+            setTimeout(spawnEnemy, i * (baseSpawnRate / wave)); // Faster spawning in later waves
+          }
+        }
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      function startGame() {
+        gameRunning = true;
+        score = 0;
+        wave = 1;
+        player.health = 100;
+        player.x = canvas.width / 2;
+        player.y = canvas.height - 50;
+        enemies.length = 0;
+        playerBullets.length = 0;
+        enemyBullets.length = 0;
+        gameOverScreen.style.display = "none";
+        lastEnemySpawnTime = Date.now(); // Reset spawn timer for the first wave
+        requestAnimationFrame(gameLoop);
+      }
+
+      function endGame() {
+        gameRunning = false;
+        finalScoreDisplay.textContent = score;
+        gameOverScreen.style.display = "flex";
+      }
+
+      function restartGame() {
+        startGame();
+      }
+
+      // --- Initial Start ---
+      startGame(); // Start the game when the page loads
+
+      // --- Image Generation Integration UI ---
+      function displayImagePrompt(type) {
+        let promptText = "";
+        switch (type) {
+          case "player":
+            promptText =
+              "Tell me: 'Generate a futuristic blue spaceship, top-down view, with glowing engines and sleek design, sci-fi art style.'";
+            break;
+          case "enemy":
+            promptText =
+              "Tell me: 'Generate a menacing red alien fighter ship, top-down view, with jagged edges and a dark aura, sci-fi art style.'";
+            break;
+          case "background":
+            promptText =
+              "Tell me: 'Generate a seamless dark space background with swirling nebulae and distant stars, high resolution.'";
+            break;
+        }
+        imageGenOutput.innerHTML = `<h3>Action required:</h3>
+            <p><strong>Copy this prompt:</strong></p>
+            <pre>${promptText}</pre>
+            <p>Then, paste it into our chat conversation and I will generate the image for you.</p>
+            <p>Once you have the image URL, you can replace the <code>ctx.fillRect</code> or <code>ctx.arc</code> calls in the JavaScript's <code>draw()</code> methods for Player, Enemy, or Bullet with image drawing logic (<code>ctx.drawImage()</code>).</p>`;
+      }
+
+      /*
+        To integrate images into your game:
+
+        1.  **Get the Image URL:** Ask me to generate an image using a prompt (as instructed above). I will give you a URL.
+        2.  **Load the Image:** In your JavaScript, create an Image object:
+            `const playerImage = new Image();`
+            `playerImage.src = 'YOUR_GENERATED_IMAGE_URL';`
+            `playerImage.onload = () => { console.log('Player image loaded!'); };`
+        3.  **Draw the Image:** Inside the `player.draw()` method (or `enemy.draw()`, etc.), replace the `ctx.fillRect` or `ctx.beginPath/arc` code with:
+            `ctx.drawImage(playerImage, this.x - this.width / 2, this.y - this.height / 2, this.width, this.height);`
+            Make sure the image is loaded before drawing it.
+        */
+    </script>
+  </body>
+</html>
