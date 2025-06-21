@@ -122,7 +122,7 @@
     </style>
   </head>
   <body>
-    <h1>Space Vanguard</h1>
+    <h1>tecleet</h1>
     <div id="gameInfo">
       <div id="scoreDisplay">Score: 0</div>
       <div id="healthDisplay">Health: 100</div>
@@ -158,6 +158,34 @@
       <div id="imageGenOutput"></div>
     </div>
 
+    <div id="gameContainer">
+      <div id="gameOverScreen" style="display: none"></div>
+    </div>
+
+    <audio
+      id="bgMusic"
+      src="audio/background_music.mp3"
+      loop
+      preload="auto"
+      volume="0.5"
+    ></audio>
+    <audio
+      id="playerShootSound"
+      src="audio/player_shoot.mp3"
+      preload="auto"
+    ></audio>
+    <audio
+      id="enemyExplodeSound"
+      src="audio/enemy_explode.mp3"
+      preload="auto"
+    ></audio>
+    <audio
+      id="playerDamageSound"
+      src="audio/player_damage.mp3"
+      preload="auto"
+    ></audio>
+    <audio id="gameOverSound" src="audio/game_over.mp3" preload="auto"></audio>
+
     <script>
       // --- Game Setup ---
       const enemyImage = new Image();
@@ -178,6 +206,62 @@
       const gameOverScreen = document.getElementById("gameOverScreen");
       const finalScoreDisplay = document.getElementById("finalScore");
       const imageGenOutput = document.getElementById("imageGenOutput");
+      // NEW: Background image OBJECT
+      const backgroundImage = new Image();
+      backgroundImage.src = "background.jpg"; // Use the URL I provided
+      backgroundImage.onload = () => {
+        console.log("Background image loaded!");
+      };
+
+      // Audio references
+      const bgMusic = document.getElementById("bgMusic");
+      const playerShootSound = document.getElementById("playerShootSound");
+      const enemyExplodeSound = document.getElementById("enemyExplodeSound");
+      const playerDamageSound = document.getElementById("playerDamageSound");
+      const gameOverSound = document.getElementById("gameOverSound");
+
+      // Flags to manage audio playback (e.g., prevent game over sound from spamming)
+      let musicStarted = false;
+      let gameOverSoundPlayed = false;
+
+      // Audio play functions
+      function playBgMusic() {
+        if (!musicStarted) {
+          // Only try to start once
+          bgMusic
+            .play()
+            .then(() => {
+              musicStarted = true;
+              console.log("Background music started!");
+            })
+            .catch((error) => {
+              console.warn("Background music autoplay prevented:", error);
+              // This is common! We'll prompt user to start it later.
+            });
+        }
+      }
+
+      function playSound(audioElement, volume = 1.0) {
+        // Clone node to allow multiple simultaneous sounds (e.g., multiple bullets)
+        const soundInstance = audioElement.cloneNode();
+        soundInstance.volume = volume;
+        soundInstance.play().catch((error) => {
+          // console.warn('Sound effect autoplay prevented:', error);
+          // This is fine for individual sound effects, user interaction will enable them
+        });
+      }
+
+      function playGameOverSound() {
+        if (!gameOverSoundPlayed) {
+          playSound(gameOverSound);
+          gameOverSoundPlayed = true;
+          // Stop background music if playing
+          bgMusic.pause();
+          bgMusic.currentTime = 0; // Reset for next game
+        }
+      }
+
+      // ... rest of your game variables and object definitions
 
       let gameRunning = false;
       let score = 0;
@@ -350,6 +434,10 @@
 
       document.addEventListener("keydown", (e) => {
         keys[e.key] = true;
+        if (!musicStarted && gameRunning) {
+          // Only if game is running and music hasn't started
+          playBgMusic();
+        }
       });
 
       document.addEventListener("keyup", (e) => {
@@ -395,6 +483,7 @@
             true
           )
         );
+        playSound(playerShootSound);
       }
 
       // --- Collision Detection ---
@@ -440,6 +529,20 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
 
+        // NEW: Draw the background image (only if it's loaded)
+        if (backgroundImage.complete && backgroundImage.naturalWidth !== 0) {
+          // Draw the image to cover the entire canvas
+          // This scaless the image to fit the canvas dimensions
+          ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+
+          // If you want to tile the background (for truly seamless images)
+          /*
+        const pattern = ctx.createPattern(backgroundImage, 'repeat');
+        ctx.fillStyle = pattern;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        */
+        }
+
         // Update and draw player
         handlePlayerMovement();
         player.update();
@@ -468,6 +571,7 @@
             if (checkCollision(bullet, enemy)) {
               enemy.health -= 1; // Bullet damage
               playerBullets.splice(i, 1); // Remove bullet
+              playSound(enemyExplodeSound);
               if (enemy.health <= 0) {
                 enemies.splice(j, 1); // Remove enemy
                 score += 10 * wave; // Score increases with wave
@@ -511,6 +615,7 @@
           if (checkCollision(bullet, player)) {
             player.health -= 5; // Enemy bullet damage
             enemyBullets.splice(i, 1); // Remove bullet
+            playSound(playerDamageSound);
             if (player.health <= 0) {
               endGame();
             }
@@ -557,13 +662,26 @@
         enemyBullets.length = 0;
         gameOverScreen.style.display = "none";
         lastEnemySpawnTime = Date.now(); // Reset spawn timer for the first wave
+        // NEW: Reset audio flags and try to play music
+        gameOverSoundPlayed = false;
+        musicStarted = false; // Music will start on first user interaction
+        playBgMusic(); //
         requestAnimationFrame(gameLoop);
       }
+      // NEW: Listen for a click on the canvas to help with music autoplay
+      canvas.addEventListener("click", () => {
+        if (!musicStarted && gameRunning) {
+          // Only if game is running and music hasn't started
+          playBgMusic();
+        }
+      });
 
       function endGame() {
         gameRunning = false;
         finalScoreDisplay.textContent = score;
         gameOverScreen.style.display = "flex";
+        // NEW: Play game over sound
+        playGameOverSound();
       }
 
       function restartGame() {
